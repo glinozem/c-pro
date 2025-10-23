@@ -7,21 +7,18 @@ on:
     branches: [ master, main ]
 
 jobs:
-  build-and-test-asan:
+  asan-ubsan:
     name: ASan/UBSan (${{ matrix.cc }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        cc: [ gcc, clang ]
+      matrix: { cc: [ gcc, clang ] }
     env:
-      CC: ${{ matrix.cc }}
       CMAKE_GENERATOR: Ninja
       ASAN_OPTIONS: detect_leaks=1:check_initialization_order=true:strict_init_order=true
       UBSAN_OPTIONS: print_stacktrace=1
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install deps
         run: |
@@ -30,39 +27,46 @@ jobs:
 
       - name: Toolchain versions
         run: |
-          cc --version || true
-          clang --version || true
+          echo "CC=${{ matrix.cc }}"
+          ${{ matrix.cc }} --version || true
           cmake --version
           ninja --version
 
       - name: Configure (ASan/UBSan)
         run: |
           cmake -S . -B build-asan-${{ matrix.cc }} -G Ninja \
-            -DENABLE_SANITIZERS=ON -DBUILD_TESTING=ON
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DENABLE_SANITIZERS=ON \
+            -DBUILD_TESTING=ON
 
-      - name: Build
+      - name: Build (verbose on fail)
         run: cmake --build build-asan-${{ matrix.cc }} -j
 
       - name: CTest (verbose)
+        env:
+          CTEST_OUTPUT_ON_FAILURE: "1"
         run: ctest --test-dir build-asan-${{ matrix.cc }} -V
 
-      - name: Upload test log on failure
+      - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ctest-log-asan-${{ matrix.cc }}
-          path: build-asan-${{ matrix.cc }}/Testing/Temporary/LastTest.log
-          if-no-files-found: ignore
+          name: logs-asan-${{ matrix.cc }}
+          path: |
+            build-asan-${{ matrix.cc }}/Testing/Temporary/LastTest.log
+            build-asan-${{ matrix.cc }}/CMakeFiles/CMakeError.log
+            build-asan-${{ matrix.cc }}/CMakeFiles/CMakeOutput.log
+            build-asan-${{ matrix.cc }}/compile_commands.json
+          if-no-files-found: warn
 
   memcheck:
     name: Valgrind (gcc)
     runs-on: ubuntu-24.04
     env:
-      CC: gcc
       CMAKE_GENERATOR: Ninja
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install deps
         run: |
@@ -72,7 +76,10 @@ jobs:
       - name: Configure (NO sanitizers)
         run: |
           cmake -S . -B build-memcheck -G Ninja \
-            -DENABLE_SANITIZERS=OFF -DBUILD_TESTING=ON
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=gcc \
+            -DENABLE_SANITIZERS=OFF \
+            -DBUILD_TESTING=ON
 
       - name: Build
         run: cmake --build build-memcheck -j
@@ -81,3 +88,14 @@ jobs:
         run: |
           valgrind --leak-check=full ./build-memcheck/test_logger
           valgrind --leak-check=full ./build-memcheck/test_mem
+
+      - name: Upload memcheck logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-memcheck
+          path: |
+            build-memcheck/Testing/Temporary/LastTest.log
+            build-memcheck/CMakeFiles/CMakeError.log
+            build-memcheck/CMakeFiles/CMakeOutput.log
+          if-no-files-found: warn
