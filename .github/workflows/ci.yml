@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test-asan:
+    name: ASan/UBSan (${{ matrix.cc }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [ gcc, clang ]
+    env:
+      CC: ${{ matrix.cc }}
+      CMAKE_GENERATOR: Ninja
+      ASAN_OPTIONS: detect_leaks=1:check_initialization_order=true:strict_init_order=true
+      UBSAN_OPTIONS: print_stacktrace=1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure (ASan/UBSan)
+        run: |
+          cmake -S . -B build-asan-${{ matrix.cc }} -G Ninja \
+            -DENABLE_SANITIZERS=ON -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build-asan-${{ matrix.cc }} -j
+
+      - name: CTest (verbose)
+        run: ctest --test-dir build-asan-${{ matrix.cc }} -V
+
+      - name: Upload test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log-asan-${{ matrix.cc }}
+          path: build-asan-${{ matrix.cc }}/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  memcheck:
+    name: Valgrind (gcc)
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc
+      CMAKE_GENERATOR: Ninja
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build valgrind
+
+      - name: Configure (NO sanitizers)
+        run: |
+          cmake -S . -B build-memcheck -G Ninja \
+            -DENABLE_SANITIZERS=OFF -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build-memcheck -j
+
+      - name: Run valgrind on tests
+        run: |
+          valgrind --leak-check=full ./build-memcheck/test_logger
+          valgrind --leak-check=full ./build-memcheck/test_mem
