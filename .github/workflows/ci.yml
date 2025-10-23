@@ -10,6 +10,7 @@ jobs:
   asan-ubsan:
     name: ASan/UBSan (${{ matrix.cc }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix: { cc: [ gcc, clang ] }
@@ -20,14 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang ninja-build cmake
-
+      # На раннере уже есть gcc/clang/cmake/ninja — просто покажем версии
       - name: Toolchain versions
         run: |
-          echo "CC=${{ matrix.cc }}"
+          echo "Using CC=${{ matrix.cc }}"
           ${{ matrix.cc }} --version || true
           cmake --version
           ninja --version
@@ -40,12 +37,11 @@ jobs:
             -DENABLE_SANITIZERS=ON \
             -DBUILD_TESTING=ON
 
-      - name: Build (verbose on fail)
+      - name: Build
         run: cmake --build build-asan-${{ matrix.cc }} -j
 
       - name: CTest (verbose)
-        env:
-          CTEST_OUTPUT_ON_FAILURE: "1"
+        env: { CTEST_OUTPUT_ON_FAILURE: "1" }
         run: ctest --test-dir build-asan-${{ matrix.cc }} -V
 
       - name: Upload logs on failure
@@ -57,21 +53,24 @@ jobs:
             build-asan-${{ matrix.cc }}/Testing/Temporary/LastTest.log
             build-asan-${{ matrix.cc }}/CMakeFiles/CMakeError.log
             build-asan-${{ matrix.cc }}/CMakeFiles/CMakeOutput.log
-            build-asan-${{ matrix.cc }}/compile_commands.json
           if-no-files-found: warn
 
   memcheck:
     name: Valgrind (gcc)
     runs-on: ubuntu-24.04
-    env:
-      CMAKE_GENERATOR: Ninja
+    timeout-minutes: 20
+    env: { CMAKE_GENERATOR: Ninja }
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps
+      - name: Ensure valgrind (with retries)
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build valgrind cmake
+          if ! command -v valgrind >/dev/null; then
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y valgrind
+          fi
+          valgrind --version
 
       - name: Configure (NO sanitizers)
         run: |
@@ -89,7 +88,7 @@ jobs:
           valgrind --leak-check=full ./build-memcheck/test_logger
           valgrind --leak-check=full ./build-memcheck/test_mem
 
-      - name: Upload memcheck logs on failure
+      - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
