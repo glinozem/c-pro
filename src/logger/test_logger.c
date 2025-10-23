@@ -1,4 +1,4 @@
-#include "logger.h"
+#include <cpro/logger.h>
 
 int main(void){
     log_info("hello");

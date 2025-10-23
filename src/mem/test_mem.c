@@ -1,5 +1,5 @@
-#include "inc/mem.h"
-#include "logger.h"
+#include <cpro/mem.h>
+#include <cpro/logger.h>
 #include <string.h>
 #include <assert.h>
 

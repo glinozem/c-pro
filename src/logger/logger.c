@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <time.h>
-#include "inc/logger.h"
+#include <cpro/logger.h>
 
 static void stamp_now(char* buf, size_t n) {
     time_t t = time(NULL);

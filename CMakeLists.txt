@@ -2,42 +2,45 @@ cmake_minimum_required(VERSION 3.16)
 project(c_pro C)
 set(CMAKE_C_STANDARD 11)
 
-# ---- options ----
 option(ENABLE_SANITIZERS "Enable Address/UB sanitizers for test targets" ON)
 
-# ---- logger (step 1) ----
+# единый публичный include
+set(CPRO_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include")
+
+# ---------- logger ----------
 add_library(logger src/logger/logger.c)
-target_include_directories(logger PUBLIC src/logger/inc)
+target_include_directories(logger PUBLIC "${CPRO_INCLUDE_DIR}")
 
 add_executable(test_logger src/logger/test_logger.c)
 target_link_libraries(test_logger PRIVATE logger)
 
-# ---- mem (step 2, optional) ----
-set(MEM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/mem")
-if (EXISTS "${MEM_DIR}/mem.c" AND EXISTS "${MEM_DIR}/inc/mem.h")
-    add_library(mem "${MEM_DIR}/mem.c")
-    target_include_directories(mem PUBLIC "${MEM_DIR}/inc")
+# ---------- mem ----------
+add_library(mem src/mem/mem.c)
+target_include_directories(mem PUBLIC "${CPRO_INCLUDE_DIR}")
+target_link_libraries(mem PRIVATE logger)  # если mem будет логировать ошибки
 
-    if (EXISTS "${MEM_DIR}/test_mem.c")
-        add_executable(test_mem "${MEM_DIR}/test_mem.c")
-        target_link_libraries(test_mem PRIVATE mem logger)
-    endif()
-endif()
+add_executable(test_mem src/mem/test_mem.c)
+target_link_libraries(test_mem PRIVATE mem logger)
 
-# ---- warnings helper ----
+# ---------- umbrella interface (для будущих клиентов) ----------
+add_library(cpro INTERFACE)
+target_include_directories(cpro INTERFACE "${CPRO_INCLUDE_DIR}")
+target_link_libraries(cpro INTERFACE logger mem)
+
+# ---------- warnings ----------
 function(enable_warnings tgt)
     if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(${tgt} PRIVATE -Wall -Wextra -Wpedantic -Werror=return-type)
     endif()
 endfunction()
 
-foreach(t IN ITEMS logger test_logger mem test_mem)
+foreach(t IN ITEMS logger mem test_logger test_mem)
     if (TARGET ${t})
         enable_warnings(${t})
     endif()
 endforeach()
 
-# ---- sanitizers for tests only ----
+# ---------- sanitizers (только для тестов) ----------
 if (ENABLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     foreach(t IN ITEMS test_logger test_mem)
         if (TARGET ${t})
@@ -47,13 +50,9 @@ if (ENABLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     endforeach()
 endif()
 
-# ---- CTest (single place; no duplicates) ----
+# ---------- CTest ----------
 include(CTest)
 if (BUILD_TESTING)
-    if (TARGET test_logger)
-        add_test(NAME logger.smoke COMMAND test_logger)
-    endif()
-    if (TARGET test_mem)
-        add_test(NAME mem.smoke COMMAND test_mem)
-    endif()
+    add_test(NAME logger.smoke COMMAND test_logger)
+    add_test(NAME mem.smoke    COMMAND test_mem)
 endif()

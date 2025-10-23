@@ -1,6 +1,5 @@
-#ifndef LOGGER_H
-#define LOGGER_H
-
+#ifndef CPRO_LOGGER_H
+#define CPRO_LOGGER_H
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -11,4 +10,5 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-#endif /* LOGGER_H */
+#endif /* CPRO_LOGGER_H */
+
